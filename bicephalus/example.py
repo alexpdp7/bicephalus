@@ -1,5 +1,9 @@
+import logging
+
 import bicephalus
 from bicephalus import main as bicephalus_main
+from bicephalus import otel
+from bicephalus import ssl
 
 
 def handler(request: bicephalus.Request) -> bicephalus.Response:
@@ -20,15 +24,9 @@ def handler(request: bicephalus.Request) -> bicephalus.Response:
 
 
 def main():
-    """
-    Usage:
-
-    $ openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem \
-              -days 365 -nodes
-    # specify localhost as the common name
-    $ poetry run python -m bicephalus.example
-    """
-    bicephalus_main.main(handler)
+    otel.configure_logging(logging.INFO)
+    with ssl.temporary_ssl_context("localhost") as ssl_context:
+        bicephalus_main.main(handler, ssl_context, 8000)
 
 
 if __name__ == "__main__":
