@@ -1,5 +1,4 @@
-This is a WIP.
-I plan to implement a small framework to implement dual HTTP/Gemini servers.
+See `bicephalus.example`
 
 # Credits
 

@@ -1,28 +1,19 @@
-from asyncio import get_running_loop, run
-from logging import getLogger
-
 from aiohttp import web
 from aiohttp import web_server
 
-
-log = getLogger(__name__)
-
-
-async def handler(request):
-    return web.Response(text="OK")
+import bicephalus
 
 
-async def main(host, port) -> None:
-    """
-    Usage:
+def create_server(handler):
+    async def adapter(request: web.Request):
+        handler_response = handler(
+            bicephalus.Request(request.path, bicephalus.Proto.HTTP)
+        )
+        status = {bicephalus.Status.OK: 200}[handler_response.status]
+        return web.Response(
+            text=handler_response.content.decode("utf8"),
+            content_type=handler_response.content_type,
+            status=status,
+        )
 
-    $ poetry run python -m bicephalus.http
-    """
-    loop = get_running_loop()
-    server = await loop.create_server(web_server.Server(handler), host, port)
-    log.info(f"('{host}', {port})")
-    await server.serve_forever()
-
-
-if __name__ == "__main__":
-    run(main("127.0.0.1", 8000))
+    return web_server.Server(adapter)

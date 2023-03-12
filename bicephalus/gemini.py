@@ -28,11 +28,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
-
-from asyncio import Protocol, Event, get_running_loop, run
-from ssl import create_default_context, Purpose
+import asyncio
 from urllib.parse import urlparse
 from logging import getLogger
+
+import bicephalus
 
 
 TIMEOUT = 1
@@ -41,13 +41,14 @@ TIMEOUT = 1
 log = getLogger(__name__)
 
 
-class GeminiProtocol(Protocol):
-    def __init__(self):
+class GeminiProtocol(asyncio.Protocol):
+    def __init__(self, handler):
+        self.handler = handler
         # Enable flow control
-        self._can_write = Event()
+        self._can_write = asyncio.Event()
         self._can_write.set()
         # Enable timeouts
-        loop = get_running_loop()
+        loop = asyncio.get_running_loop()
         self.timeout_handle = loop.call_later(TIMEOUT, self._timeout)
         log.debug(f"Timeout: {TIMEOUT}s")
 
@@ -79,7 +80,10 @@ class GeminiProtocol(Protocol):
 
     def send_file(self, path):
         log.debug(path)
-        meta, status, content = self.handler(path)
+        response = self.handler(bicephalus.Request(path, bicephalus.Proto.GEMINI))
+        meta = response.content_type
+        status = {bicephalus.Status.OK: 20}[response.status]
+        content = response.content
         self.transport.write(f"{status} {meta}\r\n".encode("utf-8"))
         self.transport.write(content)
         log.info(f"{status} {meta} {len(content)}")
@@ -100,30 +104,9 @@ class GeminiProtocol(Protocol):
         else:
             self.error(59, "Bad Request")
 
-    def handler(self, path):
-        return (
-            "text/gemini",
-            20,
-            f"# Hello world at {path}".encode("utf8"),
-        )
 
+def create_server(handler):
+    def _():
+        return GeminiProtocol(handler)
 
-async def main(host, port) -> None:
-    """
-    Usage:
-
-    $ openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem \
-              -days 365 -nodes
-    # specify localhost as the common name
-    $ poetry run python -m bicephalus.gemini
-    """
-    loop = get_running_loop()
-    context = create_default_context(Purpose.CLIENT_AUTH)
-    context.load_cert_chain("cert.pem", "key.pem")
-    server = await loop.create_server(GeminiProtocol, host, port, ssl=context)
-    log.info(f"('{host}', {port})")
-    await server.serve_forever()
-
-
-if __name__ == "__main__":
-    run(main("127.0.0.1", 1965))
+    return _
