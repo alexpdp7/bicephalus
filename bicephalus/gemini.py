@@ -35,6 +35,12 @@ from logging import getLogger
 import bicephalus
 
 
+_STATUS = {
+    bicephalus.Status.OK: 20,
+    bicephalus.Status.NOT_FOUND: 40,
+}
+
+
 TIMEOUT = 1
 
 
@@ -80,9 +86,13 @@ class GeminiProtocol(asyncio.Protocol):
 
     def send_file(self, path):
         log.debug(path)
-        response = self.handler(bicephalus.Request(path, bicephalus.Proto.GEMINI))
+        try:
+            response = self.handler(bicephalus.Request(path, bicephalus.Proto.GEMINI))
+        except Exception as e:
+            log.exception(e)
+            raise e
         meta = response.content_type
-        status = {bicephalus.Status.OK: 20}[response.status]
+        status = _STATUS[response.status]
         content = response.content
         self.transport.write(f"{status} {meta}\r\n".encode("utf-8"))
         self.transport.write(content)

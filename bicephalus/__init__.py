@@ -9,6 +9,7 @@ class Proto(enum.Enum):
 
 class Status(enum.Enum):
     OK = 0
+    NOT_FOUND = 1
 
 
 @dataclasses.dataclass
