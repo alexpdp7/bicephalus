@@ -37,7 +37,8 @@ import bicephalus
 
 _STATUS = {
     bicephalus.Status.OK: 20,
-    bicephalus.Status.NOT_FOUND: 40,
+    bicephalus.Status.NOT_FOUND: 51,
+    bicephalus.Status.ERROR: 42,
 }
 
 
@@ -88,12 +89,14 @@ class GeminiProtocol(asyncio.Protocol):
         log.debug(path)
         try:
             response = self.handler(bicephalus.Request(path, bicephalus.Proto.GEMINI))
+            meta = response.content_type
+            status = _STATUS[response.status]
+            content = response.content
         except Exception as e:
             log.exception(e)
-            raise e
-        meta = response.content_type
-        status = _STATUS[response.status]
-        content = response.content
+            status = _STATUS[bicephalus.Status.ERROR]
+            meta = "text/gemini"
+            content = repr(e).encode("utf8")
         self.transport.write(f"{status} {meta}\r\n".encode("utf-8"))
         self.transport.write(content)
         log.info(f"{status} {meta} {len(content)}")
