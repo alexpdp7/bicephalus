@@ -39,7 +39,12 @@ _STATUS = {
     bicephalus.Status.OK: 20,
     bicephalus.Status.NOT_FOUND: 51,
     bicephalus.Status.ERROR: 42,
+    bicephalus.Status.TEMPORARY_REDIRECTION: 30,
+    bicephalus.Status.PERMANENT_REDIRECTION: 31,
 }
+
+
+REDIRECTION_STATUS = (30, 31)
 
 
 TIMEOUT = 1
@@ -89,16 +94,21 @@ class GeminiProtocol(asyncio.Protocol):
         log.debug(path)
         try:
             response = self.handler(bicephalus.Request(path, bicephalus.Proto.GEMINI))
-            meta = response.content_type
             status = _STATUS[response.status]
-            content = response.content
+            if status in REDIRECTION_STATUS:
+                meta = response.content
+                content = None
+            else:
+                meta = response.content_type
+                content = response.content
         except Exception as e:
             log.exception(e)
             status = _STATUS[bicephalus.Status.ERROR]
             meta = "text/gemini"
             content = repr(e).encode("utf8")
         self.transport.write(f"{status} {meta}\r\n".encode("utf-8"))
-        self.transport.write(content)
+        if content:
+            self.transport.write(content)
         log.info(f"{status} {meta} {len(content)}")
         self.transport.close()
         return

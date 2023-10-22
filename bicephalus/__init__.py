@@ -11,6 +11,8 @@ class Status(enum.Enum):
     OK = 0
     NOT_FOUND = 1
     ERROR = 2
+    TEMPORARY_REDIRECTION = 3
+    PERMANENT_REDIRECTION = 4
 
 
 @dataclasses.dataclass
