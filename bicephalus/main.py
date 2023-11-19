@@ -3,7 +3,6 @@ import logging
 
 from bicephalus import gemini
 from bicephalus import http
-from bicephalus import otel
 
 
 _LOG = logging.getLogger(__name__)

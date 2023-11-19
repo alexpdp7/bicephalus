@@ -7,6 +7,8 @@ from bicephalus import ssl
 
 
 def handler(request: bicephalus.Request) -> bicephalus.Response:
+    assert request.path != "/error", "used /error path"
+
     if request.proto == bicephalus.Proto.GEMINI:
         content = f"# Hello at {request.path}"
         content_type = "text/gemini"
@@ -24,7 +26,7 @@ def handler(request: bicephalus.Request) -> bicephalus.Response:
 
 
 def main():
-    otel.configure_logging(logging.INFO)
+    otel.configure(log_level=logging.INFO)
     with ssl.temporary_ssl_context("localhost") as ssl_context:
         bicephalus_main.main(handler, ssl_context, 8000)
 

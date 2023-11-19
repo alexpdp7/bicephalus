@@ -32,6 +32,8 @@ import asyncio
 from urllib.parse import urlparse
 from logging import getLogger
 
+from opentelemetry import trace
+
 import bicephalus
 
 
@@ -54,11 +56,14 @@ log = getLogger(__name__)
 
 
 class GeminiProtocol(asyncio.Protocol):
-    def __init__(self, handler):
+    def __init__(self, handler, tracer):
         self.handler = handler
+        self.tracer = tracer
+
         # Enable flow control
         self._can_write = asyncio.Event()
         self._can_write.set()
+
         # Enable timeouts
         loop = asyncio.get_running_loop()
         self.timeout_handle = loop.call_later(TIMEOUT, self._timeout)
@@ -83,53 +88,64 @@ class GeminiProtocol(asyncio.Protocol):
 
     def connection_made(self, transport) -> None:
         self.transport = transport
-        log.info(transport.get_extra_info("peername"))
+        self.span = self.tracer.start_span("bicephalus.request", attributes={
+            "client.address": transport.get_extra_info("peername")[0],
+        })
 
     def error(self, code: int, msg: str) -> None:
-        self.transport.write(f"{code} {msg}\r\n".encode("utf-8"))
-        log.error(f"{code} {msg}")
-        self.transport.close()
+        with trace.use_span(self.span):
+            self.transport.write(f"{code} {msg}\r\n".encode("utf-8"))
+            self.span.set_status(trace.StatusCode.ERROR)
+            self.span.set_attribute("gemini.response.status_code", code)
+            self.span.add_event(msg)
+            self.transport.close()
 
     def send_file(self, path):
-        log.debug(path)
-        try:
-            response = self.handler(bicephalus.Request(path, bicephalus.Proto.GEMINI))
-            status = _STATUS[response.status]
-            if status in REDIRECTION_STATUS:
-                meta = response.content
-                content = None
-            else:
-                meta = response.content_type
-                content = response.content
-        except Exception as e:
-            log.exception(e)
-            status = _STATUS[bicephalus.Status.ERROR]
-            meta = "text/gemini"
-            content = repr(e).encode("utf8")
-        self.transport.write(f"{status} {meta}\r\n".encode("utf-8"))
-        if content:
-            self.transport.write(content)
-        log.info(f"{status} {meta} {len(content)}")
-        self.transport.close()
-        return
+        with trace.use_span(self.span):
+            try:
+                response = self.handler(bicephalus.Request(path, bicephalus.Proto.GEMINI))
+                status = _STATUS[response.status]
+                if status in REDIRECTION_STATUS:
+                    meta = response.content
+                    content = None
+                else:
+                    meta = response.content_type
+                    content = response.content
+            except Exception as e:
+                status = _STATUS[bicephalus.Status.ERROR]
+                meta = "text/gemini"
+                content = repr(e).encode("utf8")
+                self.span.record_exception(e)
+                self.span.set_status(trace.StatusCode.ERROR)
+            self.span.set_attribute("gemini.response.status_code", status)
+            self.transport.write(f"{status} {meta}\r\n".encode("utf-8"))
+            if content:
+                self.transport.write(content)
+            self.transport.close()
 
     def data_received(self, data) -> None:
-        self.timeout_handle.cancel()
-        log.debug(f"{data}")
-        if len(data) >= 7 and data[:7] != b"gemini:":
-            self.error(59, "Only Gemini requests are supported")
-            return
-        crlf_pos = data.find(b"\r\n")
-        if crlf_pos >= 0:
-            request = data[:crlf_pos].decode("utf-8")
-            url = urlparse(request)
-            self.send_file(url.path)
-        else:
-            self.error(59, "Bad Request")
+        with trace.use_span(self.span):
+            self.timeout_handle.cancel()
+            log.debug(f"{data}")
+            if len(data) >= 7 and data[:7] != b"gemini:":
+                self.error(59, "Only Gemini requests are supported")
+                return
+            self.span.set_attribute("url.scheme", "gemini")
+            crlf_pos = data.find(b"\r\n")
+            if crlf_pos >= 0:
+                request = data[:crlf_pos].decode("utf-8")
+                url = urlparse(request)
+                self.span.set_attribute("url.path", url.path)
+                self.send_file(url.path)
+            else:
+                self.error(59, "Bad Request")
+            self.span.end()
 
 
 def create_server(handler):
+    tracer = trace.get_tracer("bicephalus")
+
     def _():
-        return GeminiProtocol(handler)
+        return GeminiProtocol(handler, tracer)
 
     return _
