@@ -1,6 +1,16 @@
-See `bicephalus.example`
+> [!NOTE]
+> Archived.
+>
+> I no longer use this, favoring an approach I'm working on, see:
+>
+> * https://github.com/alexpdp7/gemini-from-http
+> * https://github.com/alexpdp7/simple-web
+> * https://github.com/alexpdp7/gemini-to-web
+>
+> I will likely unify those three repositories at some point and refer the result from them.
+> But this repository won't get updated.
 
-# Credits
+See `bicephalus.example`
 
 The `bicephalus.gemini` module is based on https://github.com/rcarmo/aiogemini/blob/main/server.py which is under the MIT License.
 
